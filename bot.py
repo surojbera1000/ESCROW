@@ -136,13 +136,15 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # Step 5: User session leaves the group
         await user_client.leave_chat(chat_id)
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
 
-        # Step 6: Bot deletes ALL service messages (join/left history) using Pyrogram bot client
+        # Step 6: Bot deletes ALL messages in the group (removes join/left history completely)
         try:
-            async for msg in bot_client.get_chat_history(chat_id, limit=50):
-                if msg.service:
-                    await bot_client.delete_messages(chat_id, msg.id)
+            msg_ids = []
+            async for msg in bot_client.get_chat_history(chat_id, limit=100):
+                msg_ids.append(msg.id)
+            if msg_ids:
+                await bot_client.delete_messages(chat_id, msg_ids)
         except Exception:
             pass
 
