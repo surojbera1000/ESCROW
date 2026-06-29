@@ -1,6 +1,8 @@
 import os
 import asyncio
+import random
 from io import BytesIO
+from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -567,6 +569,9 @@ async def declaration_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(text, parse_mode="MarkdownV2")
         context.chat_data["declaration_accepted"] = True
 
+        # Now send TRANSACTION INFORMATION message
+        await send_transaction_info(query, context)
+
     elif query.data == "declaration_reject":
         text = (
             f"*📌 ESCROW DECLARATION*\n\n"
@@ -576,6 +581,131 @@ async def declaration_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await query.edit_message_text(text, parse_mode="MarkdownV2")
         context.chat_data["declaration_accepted"] = False
+
+
+async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send TRANSACTION INFORMATION after Accept, change group photo, check bio for fees."""
+    chat_id = query.message.chat_id
+    token = context.chat_data.get("selected_token", "")
+    network = context.chat_data.get("selected_network", "")
+
+    # Get seller info
+    sellers = context.chat_data.get("sellers", {})
+    seller_username = "Unknown"
+    seller_id = "Unknown"
+    seller_wallet = "Unknown"
+    for uid, wallet in sellers.items():
+        seller_id = uid
+        seller_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        seller_wallet = wallet
+        break
+
+    # Get buyer info
+    buyers = context.chat_data.get("buyers", {})
+    buyer_username = "Unknown"
+    buyer_id = "Unknown"
+    buyer_wallet = "Unknown"
+    for uid, wallet in buyers.items():
+        buyer_id = uid
+        buyer_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        buyer_wallet = wallet
+        break
+
+    # Generate transaction ID
+    txn_id = str(random.randint(10000000, 99999999))
+    context.chat_data["transaction_id"] = txn_id
+
+    # Current date and time
+    now = datetime.now()
+    trade_date = now.strftime("%d/%m/%Y")
+    trade_time = now.strftime("%I:%M %p")
+
+    # Send Transaction Information message
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"<b>📍 TRANSACTION INFORMATION [{txn_id}]</b>\n\n"
+            f"<b>⚡️ SELLER</b>\n"
+            f"<b>@{seller_username} | [{seller_id}]</b>\n"
+            f"{seller_wallet} [{token}] [{network}]\n\n"
+            f"<b>⚡️ BUYER</b>\n"
+            f"<b>@{buyer_username} | [{buyer_id}]</b>\n"
+            f"{buyer_wallet} [{token}] [{network}]\n\n"
+            f"<b>⏰ Trade Start Time: {trade_date} {trade_time}</b>\n\n\n"
+            f"<b>⚠️ IMPORTANT: Make sure to finalise and agree each-others terms before depositing.</b>\n\n"
+            f"<b>🗒 Please use /deposit command to generate a deposit address for your trade.</b>"
+        ),
+        parse_mode="HTML",
+    )
+
+    # Change group photo with names
+    try:
+        # Generate group photo with seller and buyer names
+        img = Image.new("RGB", (400, 400), color=(30, 30, 30))
+        draw = ImageDraw.Draw(img)
+        try:
+            font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        except Exception:
+            font_big = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+
+        draw.text((50, 80), "🔐 ESCROW", fill=(255, 255, 255), font=font_big)
+        draw.text((50, 140), f"Seller: @{seller_username}", fill=(0, 255, 100), font=font_small)
+        draw.text((50, 180), f"Buyer: @{buyer_username}", fill=(100, 200, 255), font=font_small)
+        draw.text((50, 240), f"{token} | {network}", fill=(255, 255, 0), font=font_small)
+        draw.text((50, 300), f"TXN: {txn_id}", fill=(200, 200, 200), font=font_small)
+
+        bio = BytesIO()
+        img.save(bio, format="PNG")
+        bio.seek(0)
+
+        await context.bot.set_chat_photo(chat_id=chat_id, photo=bio)
+    except Exception as e:
+        print(f"Failed to set group photo: {e}")
+
+    # Check bio for @PagaLEscrowBot
+    bot_me = await context.bot.get_me()
+    bot_username_check = bot_me.username  # e.g. "PagaLEscrowBot"
+
+    seller_has_bio = False
+    buyer_has_bio = False
+
+    try:
+        # Check seller's bio using Pyrogram bot client
+        seller_info = await bot_client.get_users(int(seller_id))
+        if seller_info and seller_info.bio:
+            if f"@{bot_username_check}" in seller_info.bio or f"@{bot_username_check.lower()}" in seller_info.bio.lower():
+                seller_has_bio = True
+    except Exception:
+        pass
+
+    try:
+        # Check buyer's bio using Pyrogram bot client
+        buyer_info = await bot_client.get_users(int(buyer_id))
+        if buyer_info and buyer_info.bio:
+            if f"@{bot_username_check}" in buyer_info.bio or f"@{bot_username_check.lower()}" in buyer_info.bio.lower():
+                buyer_has_bio = True
+    except Exception:
+        pass
+
+    # Send fee message
+    if seller_has_bio and buyer_has_bio:
+        fee_text = (
+            f"<b>Your Fee is 0.25% as both buyer and seller are using "
+            f"@{bot_username_check} in your bio.</b>"
+        )
+    else:
+        fee_text = (
+            f"<b>Your Fee is 1.0% as both buyer and seller are not using "
+            f"@{bot_username_check} in your bio.</b>"
+        )
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=fee_text,
+        parse_mode="HTML",
+    )
 
 
 async def post_init(application) -> None:
