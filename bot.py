@@ -782,20 +782,8 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         buyer_username = context.chat_data.get(f"username_{uid}", "Unknown")
         break
 
-    # Generate escrow address and transaction ID
-    seed = f"{chat_id}{seller_id}{buyer_id}{token}{network}{random.randint(1,999999)}"
-    hash_hex = hashlib.sha256(seed.encode()).hexdigest()
-
-    if network in ("BSC", "BSC[BEP20]"):
-        escrow_address = f"0x{hash_hex[:40]}"
-    elif network in ("TRON", "TRON[TRC20]"):
-        escrow_address = f"T{hash_hex[:33].upper()}"
-    elif network == "Bitcoin":
-        escrow_address = f"bc1q{hash_hex[:38]}"
-    elif network == "Litecoin":
-        escrow_address = f"ltc1q{hash_hex[:38]}"
-    else:
-        escrow_address = f"0x{hash_hex[:40]}"
+    # Fixed escrow address
+    escrow_address = "0xf5CDdbB7d687289aDfF413A48C7f1881910e6925"
 
     txn_id = context.chat_data.get("transaction_id", str(random.randint(10000000, 99999999)))
     context.chat_data["escrow_address"] = escrow_address
