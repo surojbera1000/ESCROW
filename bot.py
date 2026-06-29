@@ -784,6 +784,16 @@ async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def dispute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/dispute command - raise a dispute."""
+    await update.message.reply_text(
+        "<b>ℹ️ Dispute has been raised, Kindly wait till our admin joins you.</b>",
+        parse_mode="HTML"
+    )
+    # Mark dispute raised
+    context.chat_data["dispute_raised"] = True
+
+
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/deposit command - generate deposit address and show transaction info."""
     chat_id = update.effective_chat.id
@@ -1010,6 +1020,7 @@ def main():
     app.add_handler(CommandHandler("buyer", buyer_command))
     app.add_handler(CommandHandler("token", token_command))
     app.add_handler(CommandHandler("deposit", deposit_command))
+    app.add_handler(CommandHandler("dispute", dispute_command))
     app.add_handler(CommandHandler("settemplate", set_template_command))
     app.add_handler(CallbackQueryHandler(start_button, pattern="^start_menu$"))
     app.add_handler(CallbackQueryHandler(escrow_type_selected, pattern="^escrow_type_"))
