@@ -252,10 +252,11 @@ async def buyer_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def token_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/token command - show token selection buttons."""
+    """/token command - show token selection buttons. Reply to user's /token message."""
     user = update.effective_user
-    # Store who initiated /token
+    # Store who initiated /token and the message ID to reply to
     context.chat_data["token_initiator_id"] = str(user.id)
+    context.chat_data["token_message_id"] = update.message.message_id
 
     keyboard = [
         [
@@ -270,6 +271,7 @@ async def token_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "*choose token from the list below*",
         parse_mode="MarkdownV2",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_to_message_id=update.message.message_id,
     )
 
 
@@ -409,32 +411,10 @@ async def token_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     elif token == "LTC":
         context.chat_data["selected_network"] = "Litecoin"
-        text = (
-            "*📌 ESCROW\\-CRYPTO DECLARATION*\n\n"
-            "*✅ CRYPTO*\n"
-            "`LTC`\n\n"
-            "*✅ NETWORK*\n"
-            "`Litecoin`"
-        )
-        await query.edit_message_text(
-            text,
-            parse_mode="MarkdownV2",
-        )
-        await send_declaration_summary(query, context)
+        await edit_to_declaration(query, context)
     elif token == "BTC":
         context.chat_data["selected_network"] = "Bitcoin"
-        text = (
-            "*📌 ESCROW\\-CRYPTO DECLARATION*\n\n"
-            "*✅ CRYPTO*\n"
-            "`BTC`\n\n"
-            "*✅ NETWORK*\n"
-            "`Bitcoin`"
-        )
-        await query.edit_message_text(
-            text,
-            parse_mode="MarkdownV2",
-        )
-        await send_declaration_summary(query, context)
+        await edit_to_declaration(query, context)
 
 
 async def network_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -468,34 +448,15 @@ async def network_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     else:
         context.chat_data["selected_network"] = "TRON"
 
-    token = context.chat_data.get("selected_token", "USDT")
-    network_display = context.chat_data["selected_network"]
-
-    text = (
-        "*📌 ESCROW\\-CRYPTO DECLARATION*\n\n"
-        "*✅ CRYPTO*\n"
-        f"`{token}`\n\n"
-        "*✅ NETWORK*\n"
-        f"`{network_display}`"
-    )
-    await query.edit_message_text(
-        text,
-        parse_mode="MarkdownV2",
-    )
-
-    # Send declaration summary for opponent to confirm
-    await send_declaration_summary(query, context)
+    # Merge everything into one message with Accept/Reject buttons
+    await edit_to_declaration(query, context)
 
 
-async def send_declaration_summary(query, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send the escrow declaration summary for the OPPONENT to confirm.
+async def edit_to_declaration(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Edit the current message to show full ESCROW DECLARATION with Accept/Reject buttons.
     
-    Logic:
-    - If SELLER initiated /token → opponent is BUYER → show "Buyer @username"
-    - If BUYER initiated /token → opponent is SELLER → show "Seller @username"
-    Only the opponent can tap Accept/Reject.
+    This merges everything into ONE message (like the screenshot).
     """
-    chat_id = query.message.chat_id
     token = context.chat_data.get("selected_token", "")
     network = context.chat_data.get("selected_network", "")
 
@@ -508,7 +469,7 @@ async def send_declaration_summary(query, context: ContextTypes.DEFAULT_TYPE) ->
 
     opponent_username = "Unknown"
     opponent_id = "Unknown"
-    opponent_role = "Buyer"  # default
+    opponent_role = "Buyer"
 
     # If initiator is seller → opponent is buyer
     if initiator_id in sellers:
@@ -557,9 +518,9 @@ async def send_declaration_summary(query, context: ContextTypes.DEFAULT_TYPE) ->
         f"*✅ {network_escaped} NETWORK*"
     )
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=text,
+    # Edit the SAME message (merge) with Accept/Reject buttons
+    await query.edit_message_text(
+        text,
         parse_mode="MarkdownV2",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
