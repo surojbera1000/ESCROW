@@ -1,24 +1,5 @@
-# Environment
 .env
-venv/
-env/
-.venv/
-
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-
-# Data (auto-generated)
-data/deals.json
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
+venv/
+data/
