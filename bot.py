@@ -1,6 +1,7 @@
 import os
 import asyncio
 import random
+import hashlib
 from io import BytesIO
 from datetime import datetime
 from dotenv import load_dotenv
@@ -749,6 +750,172 @@ async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/deposit command - generate deposit address and show transaction info."""
+    chat_id = update.effective_chat.id
+    token = context.chat_data.get("selected_token", "")
+    network = context.chat_data.get("selected_network", "")
+
+    # Check if declaration was accepted
+    if not context.chat_data.get("declaration_accepted"):
+        await update.message.reply_text(
+            "<b>⚠️ Please complete the token/network selection and get acceptance first.</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Get seller info
+    sellers = context.chat_data.get("sellers", {})
+    seller_username = "Unknown"
+    seller_id = "Unknown"
+    for uid, wallet in sellers.items():
+        seller_id = uid
+        seller_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    # Get buyer info
+    buyers = context.chat_data.get("buyers", {})
+    buyer_username = "Unknown"
+    buyer_id = "Unknown"
+    for uid, wallet in buyers.items():
+        buyer_id = uid
+        buyer_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    # Generate escrow address and transaction ID
+    seed = f"{chat_id}{seller_id}{buyer_id}{token}{network}{random.randint(1,999999)}"
+    hash_hex = hashlib.sha256(seed.encode()).hexdigest()
+
+    if network in ("BSC", "BSC[BEP20]"):
+        escrow_address = f"0x{hash_hex[:40]}"
+    elif network in ("TRON", "TRON[TRC20]"):
+        escrow_address = f"T{hash_hex[:33].upper()}"
+    elif network == "Bitcoin":
+        escrow_address = f"bc1q{hash_hex[:38]}"
+    elif network == "Litecoin":
+        escrow_address = f"ltc1q{hash_hex[:38]}"
+    else:
+        escrow_address = f"0x{hash_hex[:40]}"
+
+    txn_id = context.chat_data.get("transaction_id", str(random.randint(10000000, 99999999)))
+    context.chat_data["escrow_address"] = escrow_address
+    context.chat_data["deposit_start_time"] = datetime.now().timestamp()
+
+    # Current date and time
+    now = datetime.now()
+    trade_date = now.strftime("%d/%m/%Y")
+    trade_time = now.strftime("%I:%M %p")
+
+    # First message: loading
+    await update.message.reply_text(
+        "<b>Requesting a deposit address for you, please wait...</b>",
+        parse_mode="HTML"
+    )
+
+    await asyncio.sleep(2)
+
+    # Second message: full deposit info with Check Payment button
+    keyboard = [[InlineKeyboardButton("Check Payment", callback_data="check_payment")]]
+
+    deposit_text = (
+        f"<b>📍 TRANSACTION INFORMATION [{txn_id}]</b>\n\n"
+        f"<b>⚡️ SELLER</b>\n"
+        f"<b>@{seller_username} | [{seller_id}]</b>\n"
+        f"<b>⚡️ BUYER</b>\n"
+        f"<b>@{buyer_username} | [{buyer_id}]</b>\n"
+        f"<b>🟢 ESCROW ADDRESS</b>\n"
+        f"<code>{escrow_address}</code>\n"
+        f"<b>[{token}] [{network}]</b>\n\n"
+        f"<b>Seller @{seller_username} Will Pay on the Escrow Address, And Click On Check Payment.</b>\n\n"
+        f"<b>Amount Recieved:</b> <code>0.00000</code> <b>[0.00$]</b>\n\n"
+        f"<b>⏰ Trade Start Time: {trade_date} {trade_time}</b>\n"
+        f"<b>⏰ Address Reset In: 20.00 Min</b>\n\n"
+        f"<b>📄 Note: Address will reset after the given time, so make sure to deposit in the bot before the address exprires.</b>\n"
+        f"<b>Useful commands:</b>\n"
+        f"<b>🗒</b> <code>/release</code><b>= Will Release The Funds To Buyer.</b>\n"
+        f"<b>🗒</b> <code>/refund</code><b>= Will Refund The Funds To Seller.</b>\n\n"
+        f"<b>Remember, once commands are used payment will be released, there is no revert!</b>"
+    )
+
+    msg = await update.message.reply_text(
+        deposit_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    # Store deposit message ID for updating countdown
+    context.chat_data["deposit_message_id"] = msg.message_id
+    context.chat_data["deposit_chat_id"] = chat_id
+
+
+async def check_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Check Payment button - update the countdown timer."""
+    query = update.callback_query
+    await query.answer("🔍 Checking payment...")
+
+    chat_id = query.message.chat_id
+    token = context.chat_data.get("selected_token", "")
+    network = context.chat_data.get("selected_network", "")
+    txn_id = context.chat_data.get("transaction_id", "00000000")
+    escrow_address = context.chat_data.get("escrow_address", "")
+    deposit_start = context.chat_data.get("deposit_start_time", datetime.now().timestamp())
+
+    # Get seller info
+    sellers = context.chat_data.get("sellers", {})
+    seller_username = "Unknown"
+    seller_id = "Unknown"
+    for uid, wallet in sellers.items():
+        seller_id = uid
+        seller_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    # Get buyer info
+    buyers = context.chat_data.get("buyers", {})
+    buyer_username = "Unknown"
+    buyer_id = "Unknown"
+    for uid, wallet in buyers.items():
+        buyer_id = uid
+        buyer_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    # Calculate remaining time
+    elapsed = datetime.now().timestamp() - deposit_start
+    remaining_min = max(0, 20.0 - (elapsed / 60))
+
+    # Current date and time
+    now = datetime.now()
+    trade_date = now.strftime("%d/%m/%Y")
+    trade_time = now.strftime("%I:%M %p")
+
+    keyboard = [[InlineKeyboardButton("Check Payment", callback_data="check_payment")]]
+
+    deposit_text = (
+        f"<b>📍 TRANSACTION INFORMATION [{txn_id}]</b>\n\n"
+        f"<b>⚡️ SELLER</b>\n"
+        f"<b>@{seller_username} | [{seller_id}]</b>\n"
+        f"<b>⚡️ BUYER</b>\n"
+        f"<b>@{buyer_username} | [{buyer_id}]</b>\n"
+        f"<b>🟢 ESCROW ADDRESS</b>\n"
+        f"<code>{escrow_address}</code>\n"
+        f"<b>[{token}] [{network}]</b>\n\n"
+        f"<b>Seller @{seller_username} Will Pay on the Escrow Address, And Click On Check Payment.</b>\n\n"
+        f"<b>Amount Recieved:</b> <code>0.00000</code> <b>[0.00$]</b>\n\n"
+        f"<b>⏰ Trade Start Time: {trade_date} {trade_time}</b>\n"
+        f"<b>⏰ Address Reset In: {remaining_min:.2f} Min</b>\n\n"
+        f"<b>📄 Note: Address will reset after the given time, so make sure to deposit in the bot before the address exprires.</b>\n"
+        f"<b>Useful commands:</b>\n"
+        f"<b>🗒</b> <code>/release</code><b>= Will Release The Funds To Buyer.</b>\n"
+        f"<b>🗒</b> <code>/refund</code><b>= Will Refund The Funds To Seller.</b>\n\n"
+        f"<b>Remember, once commands are used payment will be released, there is no revert!</b>"
+    )
+
+    await query.edit_message_text(
+        deposit_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
 async def set_template_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/settemplate command - reply to a photo to set it as group photo template."""
     if not update.message.reply_to_message or not update.message.reply_to_message.photo:
@@ -820,12 +987,14 @@ def main():
     app.add_handler(CommandHandler("seller", seller_command))
     app.add_handler(CommandHandler("buyer", buyer_command))
     app.add_handler(CommandHandler("token", token_command))
+    app.add_handler(CommandHandler("deposit", deposit_command))
     app.add_handler(CommandHandler("settemplate", set_template_command))
     app.add_handler(CallbackQueryHandler(start_button, pattern="^start_menu$"))
     app.add_handler(CallbackQueryHandler(escrow_type_selected, pattern="^escrow_type_"))
     app.add_handler(CallbackQueryHandler(token_selected, pattern="^token_"))
     app.add_handler(CallbackQueryHandler(network_selected, pattern="^network_"))
     app.add_handler(CallbackQueryHandler(declaration_callback, pattern="^declaration_"))
+    app.add_handler(CallbackQueryHandler(check_payment_callback, pattern="^check_payment$"))
 
     print("✅ Bot running! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
