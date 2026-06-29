@@ -87,9 +87,9 @@ async def dd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(
         "Hello there,\n"
         "Kindly tell deal details i.e.\n\n"
-        "<code>Quantity -</code>\n"
-        "<code>Rate -</code>\n"
-        "<code>Conditions (if any) -</code>\n\n"
+        "<code>Quantity -\n"
+        "Rate -\n"
+        "Conditions (if any) -</code>\n\n"
         "Remember without it disputes wouldn't be resolved. "
         "Once filled proceed with Specifications of the seller or buyer with "
         "<code>/seller</code> or <code>/buyer</code> <b>[CRYPTO ADDRESS]</b>",
