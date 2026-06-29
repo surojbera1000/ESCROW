@@ -441,15 +441,12 @@ async def token_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 InlineKeyboardButton("Back ⬅️", callback_data="network_back"),
             ],
         ]
-        text = (
-            "*📌 ESCROW\\-CRYPTO DECLARATION*\n\n"
-            "*✅ CRYPTO*\n"
-            "`USDT`\n\n"
-            "`choose network from the list below for USDT`"
-        )
         await query.edit_message_text(
-            text,
-            parse_mode="MarkdownV2",
+            "<b>📍ESCROW-CRYPTO DECLARATION\n\n"
+            "✅ CRYPTO</b>\n"
+            f"<code>{token}</code>\n\n"
+            "<b>choose network from the list below for USDT</b>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
     elif token == "LTC":
