@@ -73,6 +73,12 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     last = user.last_name or ""
     full_name = f"{first}{last}".strip() or user.username or "User"
 
+    # Determine group name based on selection
+    if "p2p" in query.data:
+        group_title = "P2P Escrow By PAGAL Bot"
+    else:
+        group_title = "OTC Escrow By PAGAL Bot"
+
     # Show loading message
     await query.edit_message_text(
         "⏳ Creating a safe trading place for you, please wait..."
@@ -81,22 +87,10 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         # Create supergroup using the user session
         group = await user_client.create_supergroup(
-            title="Escrow Group",
-            description="P2P Crypto Escrow - Secure Trading Space"
+            title=group_title,
+            description="Secure Escrow Trading Space"
         )
         chat_id = group.id
-
-        # Add the bot to the group as admin
-        bot_info = await context.bot.get_me()
-        await user_client.add_chat_members(chat_id, bot_info.username)
-        await asyncio.sleep(1)
-
-        # Promote bot to admin
-        await user_client.promote_chat_member(
-            chat_id,
-            bot_info.id,
-            privileges=None  # Full admin
-        )
 
         # Create invite link with member limit of 2
         invite = await user_client.create_chat_invite_link(
@@ -106,7 +100,13 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         link = invite.invite_link
 
-        # Show success message
+        # Send welcome message inside the group
+        await user_client.send_message(
+            chat_id=chat_id,
+            text="📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with /dd command and fill the DealInfo Form"
+        )
+
+        # Show success message to user in DM
         await query.edit_message_text(
             f"Escrow Group Created\n\n"
             f"Creator: ⏤‌‌‌‌{full_name}\n\n"
