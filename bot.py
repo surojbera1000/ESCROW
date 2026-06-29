@@ -640,38 +640,59 @@ async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Change group photo matching the PAGAL Escrow Bot style
     try:
-        # Generate group photo: dark bg, green accents, PAGAL branding
-        img = Image.new("RGB", (500, 500), color=(20, 20, 20))
-        draw = ImageDraw.Draw(img)
+        # Try to use saved template image, draw usernames on it
+        template_path = os.path.join(os.path.dirname(__file__), "template.png")
 
-        try:
-            font_pagal = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
-            font_escrow = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 45)
-            font_names = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
-            font_dollar = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 40)
-        except Exception:
-            font_pagal = ImageFont.load_default()
-            font_escrow = ImageFont.load_default()
-            font_names = ImageFont.load_default()
-            font_dollar = ImageFont.load_default()
+        if os.path.exists(template_path):
+            # Load template and draw usernames
+            img = Image.open(template_path).copy()
+            img = img.resize((800, 800))
+            draw = ImageDraw.Draw(img)
 
-        # Draw $ signs as background pattern (green, semi-transparent look)
-        for row in range(0, 500, 80):
-            for col in range(0, 500, 80):
-                draw.text((col + 10, row + 10), "$", fill=(0, 80, 0), font=font_dollar)
+            try:
+                font_names = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
+            except Exception:
+                font_names = ImageFont.load_default()
 
-        # Green rectangle for P.A.G.A.L
-        draw.rectangle([(150, 60), (350, 110)], fill=(34, 139, 34))
-        draw.text((165, 67), "P.A.G.A.L", fill=(255, 255, 255), font=font_pagal)
+            # Draw BUYER and SELLER usernames (matching screenshot positions)
+            draw.text((280, 490), f"@{buyer_username}", fill=(255, 255, 255), font=font_names)
+            draw.text((280, 580), f"@{seller_username}", fill=(255, 255, 255), font=font_names)
 
-        # ESCROW BOT text
-        draw.text((115, 130), "ESCROW BOT", fill=(255, 255, 255), font=font_escrow)
+        else:
+            # Fallback: generate image from scratch (PAGAL style)
+            img = Image.new("RGB", (800, 800), color=(20, 20, 20))
+            draw = ImageDraw.Draw(img)
 
-        # 💰 BUYER: @username
-        draw.text((50, 260), f"\U0001f4b0 BUYER:  @{buyer_username}", fill=(0, 255, 100), font=font_names)
+            try:
+                font_pagal = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
+                font_escrow = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+                font_names = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
+                font_dollar = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 60)
+            except Exception:
+                font_pagal = ImageFont.load_default()
+                font_escrow = ImageFont.load_default()
+                font_names = ImageFont.load_default()
+                font_dollar = ImageFont.load_default()
 
-        # 💰 SELLER: @username
-        draw.text((50, 320), f"\U0001f4b0 SELLER:  @{seller_username}", fill=(0, 255, 100), font=font_names)
+            # Draw $ signs as background pattern
+            for row in range(0, 800, 120):
+                for col in range(0, 800, 120):
+                    draw.text((col + 15, row + 15), "$", fill=(0, 80, 0), font=font_dollar)
+
+            # Green rectangle for P.A.G.A.L
+            draw.rectangle([(250, 80), (550, 155)], fill=(34, 139, 34))
+            draw.text((272, 88), "P.A.G.A.L", fill=(255, 255, 255), font=font_pagal)
+
+            # ESCROW BOT text
+            draw.text((170, 190), "ESCROW BOT", fill=(255, 255, 255), font=font_escrow)
+
+            # 💰 BUYER: @username
+            draw.text((80, 420), f"\U0001f4b0 BUYER:", fill=(0, 200, 80), font=font_names)
+            draw.text((320, 420), f"@{buyer_username}", fill=(255, 255, 255), font=font_names)
+
+            # 💰 SELLER: @username
+            draw.text((80, 510), f"\U0001f4b0 SELLER:", fill=(0, 200, 80), font=font_names)
+            draw.text((320, 510), f"@{seller_username}", fill=(255, 255, 255), font=font_names)
 
         bio = BytesIO()
         img.save(bio, format="PNG")
@@ -725,6 +746,27 @@ async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def set_template_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/settemplate command - reply to a photo to set it as group photo template."""
+    if not update.message.reply_to_message or not update.message.reply_to_message.photo:
+        await update.message.reply_text(
+            "<b>⚠️ Reply to a photo with /settemplate to save it as template.</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Download the photo
+    photo = update.message.reply_to_message.photo[-1]  # Largest size
+    file = await context.bot.get_file(photo.file_id)
+    template_path = os.path.join(os.path.dirname(__file__), "template.png")
+    await file.download_to_drive(template_path)
+
+    await update.message.reply_text(
+        "<b>✅ Template saved! This will be used as group photo for new deals.</b>",
+        parse_mode="HTML"
+    )
+
+
 async def post_init(application) -> None:
     """Start Pyrogram clients when bot starts."""
     print("🔐 Starting user session...")
@@ -736,6 +778,18 @@ async def post_init(application) -> None:
     print("🤖 Starting bot client...")
     await bot_client.start()
     print("✅ Bot client started.")
+
+    # Download template if not exists and TEMPLATE_FILE_ID is set
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.png")
+    template_file_id = os.getenv("TEMPLATE_FILE_ID", "")
+    if not os.path.exists(template_path) and template_file_id:
+        try:
+            bot = application.bot
+            file = await bot.get_file(template_file_id)
+            await file.download_to_drive(template_path)
+            print(f"✅ Template downloaded from file_id")
+        except Exception as e:
+            print(f"⚠️ Could not download template: {e}")
 
 
 async def post_shutdown(application) -> None:
@@ -763,6 +817,7 @@ def main():
     app.add_handler(CommandHandler("seller", seller_command))
     app.add_handler(CommandHandler("buyer", buyer_command))
     app.add_handler(CommandHandler("token", token_command))
+    app.add_handler(CommandHandler("settemplate", set_template_command))
     app.add_handler(CallbackQueryHandler(start_button, pattern="^start_menu$"))
     app.add_handler(CallbackQueryHandler(escrow_type_selected, pattern="^escrow_type_"))
     app.add_handler(CallbackQueryHandler(token_selected, pattern="^token_"))
