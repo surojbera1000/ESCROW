@@ -18,6 +18,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # Admin's Telegram user ID for dispute notifications
 
 # Template file_id from PAGAL Escrow Bot style image (auto-downloads on first run)
 TEMPLATE_FILE_ID = os.getenv("TEMPLATE_FILE_ID", "AgACAgUAAxkBAAFNwkdqQlazoGrOAwhY04Ymi31W9HW6kwACthBrG-VpGFZFi7z7BxhCNAEAAwIAA3kAAzwE")
@@ -785,13 +786,55 @@ async def send_transaction_info(query, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def dispute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/dispute command - raise a dispute."""
+    """/dispute command - raise a dispute and notify admin."""
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    username = user.username or user.first_name or "Unknown"
+
     await update.message.reply_text(
         "<b>ℹ️ Dispute has been raised, Kindly wait till our admin joins you.</b>",
         parse_mode="HTML"
     )
     # Mark dispute raised
     context.chat_data["dispute_raised"] = True
+
+    # Get deal info
+    token = context.chat_data.get("selected_token", "N/A")
+    network = context.chat_data.get("selected_network", "N/A")
+    txn_id = context.chat_data.get("transaction_id", "N/A")
+
+    sellers = context.chat_data.get("sellers", {})
+    seller_username = "Unknown"
+    for uid, wallet in sellers.items():
+        seller_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    buyers = context.chat_data.get("buyers", {})
+    buyer_username = "Unknown"
+    for uid, wallet in buyers.items():
+        buyer_username = context.chat_data.get(f"username_{uid}", "Unknown")
+        break
+
+    # Notify admin via DM
+    if ADMIN_ID:
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "<b>🚨 DISPUTE RAISED</b>\n\n"
+                    f"<b>Raised by:</b> @{username} (ID: {user.id})\n"
+                    f"<b>Chat ID:</b> <code>{chat_id}</code>\n\n"
+                    f"<b>Seller:</b> @{seller_username}\n"
+                    f"<b>Buyer:</b> @{buyer_username}\n"
+                    f"<b>Token:</b> {token}\n"
+                    f"<b>Network:</b> {network}\n"
+                    f"<b>TXN ID:</b> {txn_id}\n\n"
+                    f"<b>Please join the group and resolve the dispute.</b>"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            print(f"Failed to notify admin: {e}")
 
 
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
