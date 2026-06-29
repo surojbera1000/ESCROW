@@ -82,16 +82,19 @@ async def escrow(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def dd_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/dd command - shows deal details form."""
+    keyboard = [[InlineKeyboardButton("How To Use Bot ?", url="https://t.me/how_to_use_pagalescrowbot")]]
+
     await update.message.reply_text(
-        "<b>Hello there,</b>\n"
-        "<b>Kindly tell deal details i.e.</b>\n\n"
-        "<code>Quantity -\n"
-        "Rate -\n"
-        "Conditions (if any) -</code>\n\n"
-        "<b>Remember without it disputes wouldn't be resolved.</b> "
+        "Hello there,\n"
+        "Kindly tell deal details i.e.\n\n"
+        "<code>Quantity -</code>\n"
+        "<code>Rate -</code>\n"
+        "<code>Conditions (if any) -</code>\n\n"
+        "Remember without it disputes wouldn't be resolved. "
         "Once filled proceed with Specifications of the seller or buyer with "
-        "/seller or /buyer [CRYPTO ADDRESS]",
-        parse_mode="HTML"
+        "<code>/seller</code> or <code>/buyer</code> <b>[CRYPTO ADDRESS]</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
