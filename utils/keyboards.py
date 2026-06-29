@@ -16,8 +16,8 @@ def escrow_type_keyboard() -> InlineKeyboardMarkup:
     """Escrow type selection keyboard."""
     keyboard = [
         [
-            InlineKeyboardButton("🤝 P2P", callback_data="escrow_type_p2p"),
-            InlineKeyboardButton("📦 Product Deal", callback_data="escrow_type_product"),
+            InlineKeyboardButton("P2P", callback_data="escrow_type_p2p"),
+            InlineKeyboardButton("Product Deal", callback_data="escrow_type_product"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

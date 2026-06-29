@@ -14,8 +14,7 @@ from config import MAX_GROUP_MEMBERS
 async def escrow_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /escrow command - show type selection."""
     await update.message.reply_text(
-        text=format_escrow_type_message(),
-        parse_mode="HTML",
+        text="Please select your escrow type from below.",
         reply_markup=escrow_type_keyboard(),
     )
 
