@@ -326,16 +326,29 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 3: Set chat history HIDDEN (private)
+        # Step 3: Set chat history HIDDEN (private) — MUST work
         try:
+            peer = await user_client.resolve_peer(chat_id)
             await user_client.invoke(
                 raw.functions.messages.TogglePreHistoryHidden(
-                    peer=await user_client.resolve_peer(chat_id),
+                    peer=peer,
                     enabled=True
                 )
             )
-        except Exception:
-            pass
+            print(f"✅ History hidden successfully for chat {chat_id}")
+        except Exception as e:
+            print(f"❌ FAILED to hide history: {e}")
+            # Try alternative method
+            try:
+                await user_client.invoke(
+                    raw.functions.channels.TogglePreHistoryHidden(
+                        channel=await user_client.resolve_peer(chat_id),
+                        enabled=True
+                    )
+                )
+                print(f"✅ History hidden (alt method) for chat {chat_id}")
+            except Exception as e2:
+                print(f"❌ Alt method also failed: {e2}")
 
         # Step 4: Add bot to the group
         bot_info = await context.bot.get_me()
