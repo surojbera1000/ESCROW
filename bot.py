@@ -309,17 +309,19 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
-        # Step 1: User session creates a PRIVATE GROUP (not supergroup)
+        # Step 1: User session creates a PRIVATE GROUP with bot as member
+        bot_info = await context.bot.get_me()
+        bot_uname = BOT_USERNAME or bot_info.username
+
         group = await user_client.create_group(
             title=group_title,
-            users=[BOT_USERNAME or (await context.bot.get_me()).username]
+            users=[bot_uname]
         )
         chat_id = group.id
 
         await asyncio.sleep(1)
 
-        # Step 2: Promote bot to admin with full privileges
-        bot_info = await context.bot.get_me()
+        # Step 2: Promote bot to admin
         await user_client.promote_chat_member(
             chat_id,
             bot_info.id,
@@ -338,26 +340,32 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await asyncio.sleep(1)
 
-        # Step 3: Convert to supergroup (required for invite links with member limit)
-        # This also hides the old "group created" messages
-        await user_client.invoke(
-            raw.functions.messages.MigrateChat(
-                chat_id=int(str(chat_id).replace("-100", "").replace("-", ""))
+        # Step 3: Convert to supergroup (this wipes old history!)
+        try:
+            peer = await user_client.resolve_peer(chat_id)
+            # For basic groups, peer is InputPeerChat with chat_id
+            if hasattr(peer, 'chat_id'):
+                basic_id = peer.chat_id
+            else:
+                basic_id = int(str(chat_id).replace("-", ""))
+
+            result = await user_client.invoke(
+                raw.functions.messages.MigrateChat(
+                    chat_id=basic_id
+                )
             )
-        )
-        await asyncio.sleep(2)
 
-        # Get the new supergroup chat_id after migration
-        dialogs = user_client.get_dialogs()
-        new_chat_id = chat_id
-        async for dialog in dialogs:
-            if dialog.chat and dialog.chat.title == group_title:
-                new_chat_id = dialog.chat.id
-                break
+            # Get new supergroup chat_id from migration result
+            for update in result.updates:
+                if hasattr(update, 'channel_id'):
+                    chat_id = int(f"-100{update.channel_id}")
+                    break
 
-        chat_id = new_chat_id
+            await asyncio.sleep(1)
+        except Exception as e:
+            print(f"Migration failed: {e}, continuing with basic group")
 
-        # Step 4: Set chat history hidden for new members
+        # Step 4: Set chat history hidden
         try:
             await user_client.invoke(
                 raw.functions.messages.TogglePreHistoryHidden(
@@ -376,11 +384,11 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         link = invite.invite_link
 
-        # Step 6: User session leaves the group
+        # Step 6: User session leaves
         await user_client.leave_chat(chat_id)
         await asyncio.sleep(2)
 
-        # Step 7: Bot deletes all remaining service messages
+        # Step 7: Bot deletes remaining service messages
         try:
             msg_ids = []
             async for msg in bot_client.get_chat_history(chat_id, limit=100):
@@ -417,7 +425,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Delete the "pinned message" service notification
+        # Delete "pinned" notification
         await asyncio.sleep(1)
         try:
             async for msg in bot_client.get_chat_history(chat_id, limit=5):
