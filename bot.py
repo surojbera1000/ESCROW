@@ -342,7 +342,6 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         await asyncio.sleep(1)
 
         # Step 4: Set chat history HIDDEN for new members
-        # New members joining will NOT see old messages (Group created, added, left)
         try:
             await user_client.invoke(
                 raw.functions.messages.TogglePreHistoryHidden(
@@ -361,53 +360,40 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         link = invite.invite_link
 
-        # Step 6: User session leaves
+        # Step 6: User session sends welcome message (appears from GROUP name, not bot)
+        welcome_msg = await user_client.send_message(
+            chat_id=chat_id,
+            text="<b>📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form</b>",
+            parse_mode="html",
+        )
+
+        # Step 7: Pin the welcome message (using user session)
+        try:
+            await user_client.pin_chat_message(chat_id, welcome_msg.id)
+        except Exception:
+            pass
+
+        # Step 8: Delete the "pinned" service notification
+        await asyncio.sleep(1)
+        try:
+            async for msg in user_client.get_chat_history(chat_id, limit=5):
+                if msg.service and msg.id != welcome_msg.id:
+                    await user_client.delete_messages(chat_id, msg.id)
+        except Exception:
+            pass
+
+        # Step 9: User session leaves
         await user_client.leave_chat(chat_id)
         await asyncio.sleep(2)
 
-        # Step 7: Bot deletes all messages (including "left" message)
+        # Step 10: Bot deletes "left" message
         try:
             msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=100):
-                msg_ids.append(msg.id)
+            async for msg in bot_client.get_chat_history(chat_id, limit=10):
+                if msg.id != welcome_msg.id:
+                    msg_ids.append(msg.id)
             if msg_ids:
                 await bot_client.delete_messages(chat_id, msg_ids)
-        except Exception:
-            pass
-
-        await asyncio.sleep(1)
-        try:
-            msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=100):
-                msg_ids.append(msg.id)
-            if msg_ids:
-                await bot_client.delete_messages(chat_id, msg_ids)
-        except Exception:
-            pass
-
-        # Step 8: Bot sends welcome message and PINS it
-        welcome_msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text="<b>📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form</b>",
-            parse_mode="HTML",
-        )
-
-        # Pin the welcome message
-        try:
-            await context.bot.pin_chat_message(
-                chat_id=chat_id,
-                message_id=welcome_msg.message_id,
-                disable_notification=True
-            )
-        except Exception:
-            pass
-
-        # Delete "pinned" notification
-        await asyncio.sleep(1)
-        try:
-            async for msg in bot_client.get_chat_history(chat_id, limit=5):
-                if msg.service and msg.id != welcome_msg.message_id:
-                    await bot_client.delete_messages(chat_id, msg.id)
         except Exception:
             pass
 
