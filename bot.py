@@ -309,20 +309,17 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
-        # Step 1: User session creates supergroup
-        group = await user_client.create_supergroup(
+        # Step 1: User session creates a PRIVATE GROUP (not supergroup)
+        group = await user_client.create_group(
             title=group_title,
-            description="Secure Escrow Trading Space"
+            users=[BOT_USERNAME or (await context.bot.get_me()).username]
         )
         chat_id = group.id
 
-        # Step 2: Add bot to the group
-        bot_info = await context.bot.get_me()
-        bot_uname = BOT_USERNAME or bot_info.username
-        await user_client.add_chat_members(chat_id, bot_uname)
         await asyncio.sleep(1)
 
-        # Step 3: Promote bot to admin with full privileges
+        # Step 2: Promote bot to admin with full privileges
+        bot_info = await context.bot.get_me()
         await user_client.promote_chat_member(
             chat_id,
             bot_info.id,
@@ -341,15 +338,26 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await asyncio.sleep(1)
 
-        # Step 4: Create invite link with member limit of 2
-        invite = await user_client.create_chat_invite_link(
-            chat_id=chat_id,
-            member_limit=2,
-            name="Escrow Invite"
+        # Step 3: Convert to supergroup (required for invite links with member limit)
+        # This also hides the old "group created" messages
+        await user_client.invoke(
+            raw.functions.messages.MigrateChat(
+                chat_id=int(str(chat_id).replace("-100", "").replace("-", ""))
+            )
         )
-        link = invite.invite_link
+        await asyncio.sleep(2)
 
-        # Step 4.5: Set chat history hidden for new members (private)
+        # Get the new supergroup chat_id after migration
+        dialogs = user_client.get_dialogs()
+        new_chat_id = chat_id
+        async for dialog in dialogs:
+            if dialog.chat and dialog.chat.title == group_title:
+                new_chat_id = dialog.chat.id
+                break
+
+        chat_id = new_chat_id
+
+        # Step 4: Set chat history hidden for new members
         try:
             await user_client.invoke(
                 raw.functions.messages.TogglePreHistoryHidden(
@@ -360,73 +368,22 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 5: Use DeleteHistory to wipe all messages before removing user session
-        try:
-            await user_client.invoke(
-                raw.functions.messages.DeleteHistory(
-                    peer=await user_client.resolve_peer(chat_id),
-                    max_id=0,
-                    just_clear=True,
-                    revoke=True
-                )
-            )
-        except Exception:
-            pass
+        # Step 5: Create invite link with member limit of 2
+        invite = await user_client.create_chat_invite_link(
+            chat_id=chat_id,
+            member_limit=2,
+            name="Escrow Invite"
+        )
+        link = invite.invite_link
 
-        # Step 6: Instead of user_client leaving (which shows "left" message),
-        # Bot KICKS the user session (with revoke) — this doesn't show "left" message
-        try:
-            user_me = await user_client.get_me()
-            # Bot bans the user session from the group (removes without "left" message)
-            await bot_client.invoke(
-                raw.functions.channels.EditBanned(
-                    channel=await bot_client.resolve_peer(chat_id),
-                    participant=await bot_client.resolve_peer(user_me.id),
-                    banned_rights=raw.types.ChatBannedRights(
-                        until_date=0,
-                        view_messages=True,
-                        send_messages=True,
-                        send_media=True,
-                        send_stickers=True,
-                        send_gifs=True,
-                        send_games=True,
-                        send_inline=True,
-                        embed_links=True,
-                    )
-                )
-            )
-            await asyncio.sleep(1)
-            # Immediately unban (so they're just removed, not permanently banned)
-            await bot_client.invoke(
-                raw.functions.channels.EditBanned(
-                    channel=await bot_client.resolve_peer(chat_id),
-                    participant=await bot_client.resolve_peer(user_me.id),
-                    banned_rights=raw.types.ChatBannedRights(
-                        until_date=0,
-                        view_messages=False,
-                        send_messages=False,
-                        send_media=False,
-                        send_stickers=False,
-                        send_gifs=False,
-                        send_games=False,
-                        send_inline=False,
-                        embed_links=False,
-                    )
-                )
-            )
-        except Exception as e:
-            print(f"Kick method failed: {e}")
-            # Fallback: user session just leaves
-            try:
-                await user_client.leave_chat(chat_id)
-            except Exception:
-                pass
-
-        # Step 7: Delete any remaining service messages
+        # Step 6: User session leaves the group
+        await user_client.leave_chat(chat_id)
         await asyncio.sleep(2)
+
+        # Step 7: Bot deletes all remaining service messages
         try:
             msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=50):
+            async for msg in bot_client.get_chat_history(chat_id, limit=100):
                 msg_ids.append(msg.id)
             if msg_ids:
                 await bot_client.delete_messages(chat_id, msg_ids)
@@ -436,14 +393,14 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         await asyncio.sleep(1)
         try:
             msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=50):
+            async for msg in bot_client.get_chat_history(chat_id, limit=100):
                 msg_ids.append(msg.id)
             if msg_ids:
                 await bot_client.delete_messages(chat_id, msg_ids)
         except Exception:
             pass
 
-        # Step 7: Bot sends welcome message and PINS it
+        # Step 8: Bot sends welcome message and PINS it
         welcome_msg = await context.bot.send_message(
             chat_id=chat_id,
             text="<b>📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form</b>",
