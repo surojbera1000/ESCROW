@@ -363,8 +363,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         # Step 6: User session sends welcome message (appears from GROUP name, not bot)
         welcome_msg = await user_client.send_message(
             chat_id=chat_id,
-            text="<b>📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form</b>",
-            parse_mode="html",
+            text="**📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form**",
         )
 
         # Step 7: Pin the welcome message (using user session)
