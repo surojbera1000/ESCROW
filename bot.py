@@ -360,41 +360,50 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 5: Delete ALL messages BEFORE leaving (user session has creator rights)
-        await asyncio.sleep(1)
+        # Step 5: Use DeleteHistory to completely wipe all messages (including service msgs)
         try:
-            msg_ids = []
-            async for msg in user_client.get_chat_history(chat_id, limit=100):
-                msg_ids.append(msg.id)
-            if msg_ids:
-                await user_client.delete_messages(chat_id, msg_ids)
+            await user_client.invoke(
+                raw.functions.messages.DeleteHistory(
+                    peer=await user_client.resolve_peer(chat_id),
+                    max_id=0,
+                    just_clear=True,
+                    revoke=True
+                )
+            )
         except Exception:
-            pass
+            # Fallback: try deleting individual messages
+            try:
+                msg_ids = []
+                async for msg in user_client.get_chat_history(chat_id, limit=100):
+                    msg_ids.append(msg.id)
+                if msg_ids:
+                    await user_client.delete_messages(chat_id, msg_ids)
+            except Exception:
+                pass
 
         # Step 6: User session leaves the group
         await user_client.leave_chat(chat_id)
 
-        # Step 7: Wait and delete the "left" message using bot (bot is admin)
+        # Step 7: Wait and delete the "left" message using bot
         await asyncio.sleep(2)
         try:
-            msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=10):
-                msg_ids.append(msg.id)
-            if msg_ids:
-                await bot_client.delete_messages(chat_id, msg_ids)
+            # Use DeleteHistory via bot_client too
+            await bot_client.invoke(
+                raw.functions.channels.DeleteHistory(
+                    channel=await bot_client.resolve_peer(chat_id),
+                    max_id=0
+                )
+            )
         except Exception:
-            pass
-
-        # Extra pass - make sure nothing remains
-        await asyncio.sleep(1)
-        try:
-            msg_ids = []
-            async for msg in bot_client.get_chat_history(chat_id, limit=10):
-                msg_ids.append(msg.id)
-            if msg_ids:
-                await bot_client.delete_messages(chat_id, msg_ids)
-        except Exception:
-            pass
+            # Fallback
+            try:
+                msg_ids = []
+                async for msg in bot_client.get_chat_history(chat_id, limit=50):
+                    msg_ids.append(msg.id)
+                if msg_ids:
+                    await bot_client.delete_messages(chat_id, msg_ids)
+            except Exception:
+                pass
 
         # Step 7: Bot sends welcome message and PINS it
         welcome_msg = await context.bot.send_message(
