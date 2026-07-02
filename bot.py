@@ -360,7 +360,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 5: Use DeleteHistory to completely wipe all messages (including service msgs)
+        # Step 5: Use DeleteHistory to wipe all messages before removing user session
         try:
             await user_client.invoke(
                 raw.functions.messages.DeleteHistory(
@@ -371,39 +371,77 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
             )
         except Exception:
-            # Fallback: try deleting individual messages
-            try:
-                msg_ids = []
-                async for msg in user_client.get_chat_history(chat_id, limit=100):
-                    msg_ids.append(msg.id)
-                if msg_ids:
-                    await user_client.delete_messages(chat_id, msg_ids)
-            except Exception:
-                pass
+            pass
 
-        # Step 6: User session leaves the group
-        await user_client.leave_chat(chat_id)
-
-        # Step 7: Wait and delete the "left" message using bot
-        await asyncio.sleep(2)
+        # Step 6: Instead of user_client leaving (which shows "left" message),
+        # Bot KICKS the user session (with revoke) — this doesn't show "left" message
         try:
-            # Use DeleteHistory via bot_client too
+            user_me = await user_client.get_me()
+            # Bot bans the user session from the group (removes without "left" message)
             await bot_client.invoke(
-                raw.functions.channels.DeleteHistory(
+                raw.functions.channels.EditBanned(
                     channel=await bot_client.resolve_peer(chat_id),
-                    max_id=0
+                    participant=await bot_client.resolve_peer(user_me.id),
+                    banned_rights=raw.types.ChatBannedRights(
+                        until_date=0,
+                        view_messages=True,
+                        send_messages=True,
+                        send_media=True,
+                        send_stickers=True,
+                        send_gifs=True,
+                        send_games=True,
+                        send_inline=True,
+                        embed_links=True,
+                    )
                 )
             )
-        except Exception:
-            # Fallback
+            await asyncio.sleep(1)
+            # Immediately unban (so they're just removed, not permanently banned)
+            await bot_client.invoke(
+                raw.functions.channels.EditBanned(
+                    channel=await bot_client.resolve_peer(chat_id),
+                    participant=await bot_client.resolve_peer(user_me.id),
+                    banned_rights=raw.types.ChatBannedRights(
+                        until_date=0,
+                        view_messages=False,
+                        send_messages=False,
+                        send_media=False,
+                        send_stickers=False,
+                        send_gifs=False,
+                        send_games=False,
+                        send_inline=False,
+                        embed_links=False,
+                    )
+                )
+            )
+        except Exception as e:
+            print(f"Kick method failed: {e}")
+            # Fallback: user session just leaves
             try:
-                msg_ids = []
-                async for msg in bot_client.get_chat_history(chat_id, limit=50):
-                    msg_ids.append(msg.id)
-                if msg_ids:
-                    await bot_client.delete_messages(chat_id, msg_ids)
+                await user_client.leave_chat(chat_id)
             except Exception:
                 pass
+
+        # Step 7: Delete any remaining service messages
+        await asyncio.sleep(2)
+        try:
+            msg_ids = []
+            async for msg in bot_client.get_chat_history(chat_id, limit=50):
+                msg_ids.append(msg.id)
+            if msg_ids:
+                await bot_client.delete_messages(chat_id, msg_ids)
+        except Exception:
+            pass
+
+        await asyncio.sleep(1)
+        try:
+            msg_ids = []
+            async for msg in bot_client.get_chat_history(chat_id, limit=50):
+                msg_ids.append(msg.id)
+            if msg_ids:
+                await bot_client.delete_messages(chat_id, msg_ids)
+        except Exception:
+            pass
 
         # Step 7: Bot sends welcome message and PINS it
         welcome_msg = await context.bot.send_message(
