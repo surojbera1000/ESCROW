@@ -315,13 +315,35 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         chat_id = group.id
 
-        # Step 2: Add bot to the group
+        # Step 2: User session clears ALL history BEFORE adding bot
+        await asyncio.sleep(1)
+        try:
+            msg_ids = []
+            async for msg in user_client.get_chat_history(chat_id, limit=100):
+                msg_ids.append(msg.id)
+            if msg_ids:
+                await user_client.delete_messages(chat_id, msg_ids)
+        except Exception:
+            pass
+
+        # Step 3: Set chat history HIDDEN (private)
+        try:
+            await user_client.invoke(
+                raw.functions.messages.TogglePreHistoryHidden(
+                    peer=await user_client.resolve_peer(chat_id),
+                    enabled=True
+                )
+            )
+        except Exception:
+            pass
+
+        # Step 4: Add bot to the group
         bot_info = await context.bot.get_me()
         bot_uname = BOT_USERNAME or bot_info.username
         await user_client.add_chat_members(chat_id, bot_uname)
         await asyncio.sleep(1)
 
-        # Step 3: Promote bot to full admin
+        # Step 5: Promote bot to FULL admin
         await user_client.promote_chat_member(
             chat_id,
             bot_info.id,
@@ -340,18 +362,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await asyncio.sleep(1)
 
-        # Step 4: Set chat history HIDDEN (private) for new members
-        try:
-            await user_client.invoke(
-                raw.functions.messages.TogglePreHistoryHidden(
-                    peer=await user_client.resolve_peer(chat_id),
-                    enabled=True
-                )
-            )
-        except Exception:
-            pass
-
-        # Step 5: Create invite link with member limit of 2
+        # Step 6: Create invite link with member limit of 2
         invite = await user_client.create_chat_invite_link(
             chat_id=chat_id,
             member_limit=2,
@@ -359,11 +370,21 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         link = invite.invite_link
 
-        # Step 6: User session leaves FIRST (before any message)
-        await user_client.leave_chat(chat_id)
-        await asyncio.sleep(2)
+        # Step 7: Bot kicks user session out (no "left" message this way)
+        try:
+            user_me = await user_client.get_me()
+            await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_me.id)
+            await asyncio.sleep(1)
+            await context.bot.unban_chat_member(chat_id=chat_id, user_id=user_me.id)
+        except Exception:
+            # Fallback: user leaves
+            try:
+                await user_client.leave_chat(chat_id)
+            except Exception:
+                pass
 
-        # Step 7: Bot deletes ALL messages (Group created, added, left - everything)
+        # Step 8: Bot deletes ALL remaining messages
+        await asyncio.sleep(2)
         try:
             msg_ids = []
             async for msg in bot_client.get_chat_history(chat_id, limit=100):
@@ -383,14 +404,14 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 8: BOT sends welcome message (will show as bot name with "admin" tag)
+        # Step 9: BOT sends welcome message
         welcome_msg = await context.bot.send_message(
             chat_id=chat_id,
             text="<b>📍 Hey there traders! Welcome to our escrow service.\n✅ Please start with  /dd  command and fill the DealInfo Form</b>",
             parse_mode="HTML",
         )
 
-        # Step 9: Pin the welcome message
+        # Step 10: Pin the welcome message
         try:
             await context.bot.pin_chat_message(
                 chat_id=chat_id,
@@ -400,7 +421,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             pass
 
-        # Step 10: Delete "pinned" notification
+        # Step 11: Delete "pinned" notification
         await asyncio.sleep(1)
         try:
             msg_ids = []
