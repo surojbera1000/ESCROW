@@ -309,19 +309,20 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
-        # Step 1: User session creates a PRIVATE GROUP with bot as member
-        bot_info = await context.bot.get_me()
-        bot_uname = BOT_USERNAME or bot_info.username
-
-        group = await user_client.create_group(
+        # Step 1: User session creates SUPERGROUP directly
+        group = await user_client.create_supergroup(
             title=group_title,
-            users=[bot_uname]
+            description="Secure Escrow Trading Space"
         )
         chat_id = group.id
 
+        # Step 2: Add bot to the group
+        bot_info = await context.bot.get_me()
+        bot_uname = BOT_USERNAME or bot_info.username
+        await user_client.add_chat_members(chat_id, bot_uname)
         await asyncio.sleep(1)
 
-        # Step 2: Promote bot to admin
+        # Step 3: Promote bot to full admin
         await user_client.promote_chat_member(
             chat_id,
             bot_info.id,
@@ -340,32 +341,8 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await asyncio.sleep(1)
 
-        # Step 3: Convert to supergroup (this wipes old history!)
-        try:
-            peer = await user_client.resolve_peer(chat_id)
-            # For basic groups, peer is InputPeerChat with chat_id
-            if hasattr(peer, 'chat_id'):
-                basic_id = peer.chat_id
-            else:
-                basic_id = int(str(chat_id).replace("-", ""))
-
-            result = await user_client.invoke(
-                raw.functions.messages.MigrateChat(
-                    chat_id=basic_id
-                )
-            )
-
-            # Get new supergroup chat_id from migration result
-            for update in result.updates:
-                if hasattr(update, 'channel_id'):
-                    chat_id = int(f"-100{update.channel_id}")
-                    break
-
-            await asyncio.sleep(1)
-        except Exception as e:
-            print(f"Migration failed: {e}, continuing with basic group")
-
-        # Step 4: Set chat history hidden
+        # Step 4: Set chat history HIDDEN for new members
+        # New members joining will NOT see old messages (Group created, added, left)
         try:
             await user_client.invoke(
                 raw.functions.messages.TogglePreHistoryHidden(
@@ -388,7 +365,7 @@ async def escrow_type_selected(update: Update, context: ContextTypes.DEFAULT_TYP
         await user_client.leave_chat(chat_id)
         await asyncio.sleep(2)
 
-        # Step 7: Bot deletes remaining service messages
+        # Step 7: Bot deletes all messages (including "left" message)
         try:
             msg_ids = []
             async for msg in bot_client.get_chat_history(chat_id, limit=100):
